@@ -1,4 +1,127 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, CalendarDays, Users, Wallet, Boxes, Plus, Clock3, MapPin, ChevronRight, Sparkles } from 'lucide-react';
-const events=[{name:'Design Forward Summit',type:'Conference',date:'OCT 28, 2026',time:'9:00 AM – 5:30 PM',place:'The Glasshouse',people:'180 guests',status:'Planning',color:'lavender',initial:'DF'},{name:'Autumn Makers Market',type:'Community',date:'NOV 02, 2026',time:'10:00 AM – 4:00 PM',place:'Riverside Hall',people:'320 guests',status:'Confirmed',color:'peach',initial:'AM'},{name:'Product Launch Night',type:'Corporate',date:'NOV 12, 2026',time:'6:00 PM – 9:30 PM',place:'Studio 08',people:'95 guests',status:'Planning',color:'mint',initial:'PL'}];
-export default function Home(){return <><header className="topbar"><div><div className="eyebrow">WEDNESDAY, OCTOBER 21, 2026</div><h1>Good morning, Alex <span className="wave">✳</span></h1><p className="subheading">Here’s what’s happening across your events.</p></div><Link className="button primary" href="/events"><Plus size={17}/> Create event</Link></header><section className="welcome-banner"><div className="banner-copy"><span className="banner-tag"><Sparkles size={13}/> YOUR EVENT WORKSPACE</span><h2>Big ideas. Beautifully coordinated.</h2><p>Bring every detail, resource, and team together in one place.</p><Link href="/events" className="banner-link">Plan your next event <ArrowUpRight size={16}/></Link></div><div className="banner-art"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-card"><CalendarDays size={23}/><strong>It all comes<br/>together.</strong><span>One plan, every detail.</span></div><span className="spark spark-a">✦</span><span className="spark spark-b">✳</span><span className="spark spark-c">✧</span></div></section><div className="section-heading"><div><h2>Your overview</h2><p>A quick look at your event portfolio.</p></div><button className="period-button">This month <span>⌄</span></button></div><section className="stats-grid"><article className="stat-card"><div className="stat-top"><span>Upcoming events</span><span className="stat-icon violet"><CalendarDays size={18}/></span></div><div className="stat-number">08</div><div className="stat-foot"><span className="positive">+2</span> compared to last month</div></article><article className="stat-card"><div className="stat-top"><span>Expected attendees</span><span className="stat-icon amber"><Users size={18}/></span></div><div className="stat-number">1,240</div><div className="stat-foot">Across all upcoming events</div></article><article className="stat-card"><div className="stat-top"><span>Planned budget</span><span className="stat-icon green"><Wallet size={18}/></span></div><div className="stat-number">₹4.8L</div><div className="stat-foot">₹1.6L spent so far</div></article><article className="stat-card"><div className="stat-top"><span>Resources allocated</span><span className="stat-icon blue"><Boxes size={18}/></span></div><div className="stat-number">34<span className="stat-small"> / 48</span></div><div className="progress"><span style={{width:'71%'}}/></div><div className="stat-foot">71% resource utilization</div></article></section><div className="content-grid"><section className="panel events-panel"><div className="panel-heading"><div><h2>Upcoming events</h2><p>Your next moments in the making.</p></div><Link href="/events" className="text-link">View all <ChevronRight size={16}/></Link></div><div className="event-list">{events.map(e=><article className="event-row" key={e.name}><div className={`event-monogram ${e.color}`}>{e.initial}</div><div className="event-main"><div className="event-title-line"><strong>{e.name}</strong><span className={`status ${e.status==='Confirmed'?'confirmed':''}`}>{e.status}</span></div><div className="event-type">{e.type}</div><div className="event-meta"><span><CalendarDays size={13}/>{e.date}</span><span><Clock3 size={13}/>{e.time}</span><span><MapPin size={13}/>{e.place}</span></div></div><div className="event-attendees"><strong>{e.people.split(' ')[0]}</strong><small>attendees</small></div><Link href="/events" className="row-arrow" aria-label={`View ${e.name}`}><ArrowUpRight size={17}/></Link></article>)}</div><div className="panel-footer"><span>Showing 3 of 8 upcoming events</span><Link href="/events">Explore events <ArrowUpRight size={14}/></Link></div></section><aside className="right-column"><section className="panel allocation-panel"><div className="panel-heading"><div><h2>Resource health</h2><p>Availability at a glance.</p></div><Boxes size={18} className="panel-icon"/></div><div className="allocation-total"><strong>71%</strong><span>of resources allocated</span></div><div className="big-progress"><span style={{width:'71%'}}/></div><div className="resource-breakdown"><div><span><i className="dot dot-violet"/>Venues</span><strong>6 / 8</strong></div><div><span><i className="dot dot-orange"/>Equipment</span><strong>18 / 24</strong></div><div><span><i className="dot dot-green"/>Staff & services</span><strong>10 / 16</strong></div></div><Link href="/resources" className="panel-action">Manage resources <ArrowUpRight size={15}/></Link></section><section className="tip-card"><div className="tip-icon"><Sparkles size={18}/></div><div><span className="tip-label">A LITTLE NUDGE</span><h3>Plan ahead, stress less.</h3><p>Check resource availability early to avoid last-minute scheduling conflicts.</p><Link href="/resources">Check availability <ArrowUpRight size={14}/></Link></div></section></aside></div><footer className="page-footer"><span>© 2026 Planora Studio</span><span>Thoughtfully planned, beautifully done <span className="footer-star">✳</span></span></footer></>}
+import { ArrowUpRight, CalendarDays, Users, Wallet, Boxes, Plus, Clock3, MapPin, ChevronRight, Sparkles, LoaderCircle } from 'lucide-react';
+
+type EventRow = {
+  event_id: number | string;
+  event_name: string;
+  event_type: string;
+  start_datetime: string;
+  end_datetime: string;
+  location: string | null;
+  expected_attendees: number;
+  total_budget: number | string;
+  status: string;
+};
+
+type ResourceRow = { resource_id: number | string; type_name: string };
+
+function money(value: number) {
+  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
+}
+
+function eventDate(value: string) {
+  return new Intl.DateTimeFormat('en-IN', { month: 'short', day: '2-digit', year: 'numeric' }).format(new Date(value)).toUpperCase();
+}
+
+function eventTime(start: string, end: string) {
+  const format = new Intl.DateTimeFormat('en-IN', { hour: 'numeric', minute: '2-digit' });
+  return `${format.format(new Date(start))} – ${format.format(new Date(end))}`;
+}
+
+export default function Home() {
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [resources, setResources] = useState<ResourceRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadOverview() {
+      try {
+        const [eventResponse, resourceResponse] = await Promise.all([
+          fetch('/api/events', { signal: controller.signal }),
+          fetch('/api/resources', { signal: controller.signal }),
+        ]);
+        const [eventBody, resourceBody] = await Promise.all([eventResponse.json(), resourceResponse.json()]);
+        if (!eventResponse.ok) throw new Error(eventBody.error || 'Could not load events.');
+        if (!resourceResponse.ok) throw new Error(resourceBody.error || 'Could not load resources.');
+        setEvents(eventBody.data);
+        setResources(resourceBody.data);
+      } catch (err) {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load your overview.');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }
+    loadOverview();
+    return () => controller.abort();
+  }, []);
+
+  const upcoming = useMemo(() => {
+    const now = Date.now();
+    return events
+      .filter((event) => new Date(event.end_datetime).getTime() >= now && !['CANCELLED', 'COMPLETED'].includes(event.status))
+      .sort((a, b) => new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime());
+  }, [events]);
+  const expectedAttendees = upcoming.reduce((total, event) => total + Number(event.expected_attendees || 0), 0);
+  const plannedBudget = upcoming.reduce((total, event) => total + Number(event.total_budget || 0), 0);
+  const resourceGroups = resources.reduce<Record<string, number>>((groups, resource) => {
+    groups[resource.type_name] = (groups[resource.type_name] || 0) + 1;
+    return groups;
+  }, {});
+  const eventColors = ['lavender', 'peach', 'mint'];
+
+  return <>
+    <header className="topbar">
+      <div><div className="eyebrow">PLANORA / OVERVIEW</div><h1>Your event workspace <span className="wave">✳</span></h1><p className="subheading">A live look at events and resources in your database.</p></div>
+      <Link className="button primary" href="/events"><Plus size={17}/> Create event</Link>
+    </header>
+    <section className="welcome-banner">
+      <div className="banner-copy">
+        <span className="banner-tag"><Sparkles size={13}/> YOUR EVENT WORKSPACE</span>
+        <h2>Big ideas. Beautifully coordinated.</h2>
+        <p>Bring every detail, resource, and team together in one place.</p>
+        <Link href="/events" className="banner-link">Plan your next event <ArrowUpRight size={16}/></Link>
+      </div>
+      <div className="banner-art" aria-hidden="true"><div className="art-orbit orbit-one"/><div className="art-orbit orbit-two"/><div className="art-card"><CalendarDays size={23}/><strong>It all comes<br/>together.</strong><span>One plan, every detail.</span></div><span className="spark spark-a">✦</span><span className="spark spark-b">✳</span><span className="spark spark-c">✧</span></div>
+    </section>
+
+    {error && <div className="inline-message error-cell" role="alert">{error} Check your database connection and schema setup.</div>}
+    <div className="section-heading"><div><h2>Your overview</h2><p>Live totals for upcoming events and active resources.</p></div></div>
+    <section className="stats-grid">
+      <article className="stat-card"><div className="stat-top"><span>Upcoming events</span><span className="stat-icon violet"><CalendarDays size={18}/></span></div><div className="stat-number">{loading ? '—' : upcoming.length}</div><div className="stat-foot">From your event records</div></article>
+      <article className="stat-card"><div className="stat-top"><span>Expected attendees</span><span className="stat-icon amber"><Users size={18}/></span></div><div className="stat-number">{loading ? '—' : expectedAttendees.toLocaleString('en-IN')}</div><div className="stat-foot">Across upcoming events</div></article>
+      <article className="stat-card"><div className="stat-top"><span>Planned budget</span><span className="stat-icon green"><Wallet size={18}/></span></div><div className="stat-number stat-number-currency">{loading ? '—' : money(plannedBudget)}</div><div className="stat-foot">Combined upcoming event budgets</div></article>
+      <article className="stat-card"><div className="stat-top"><span>Active resources</span><span className="stat-icon blue"><Boxes size={18}/></span></div><div className="stat-number">{loading ? '—' : resources.length}</div><div className="stat-foot">Listed in your resource catalogue</div></article>
+    </section>
+
+    <div className="content-grid">
+      <section className="panel events-panel">
+        <div className="panel-heading"><div><h2>Upcoming events</h2><p>Your next moments in the making.</p></div><Link href="/events" className="text-link">View all <ChevronRight size={16}/></Link></div>
+        {loading ? <div className="empty-state"><LoaderCircle size={17} className="spin"/> Loading event records…</div>
+          : upcoming.length === 0 ? <div className="empty-state">No upcoming events yet. Create your first event to get started.</div>
+          : <div className="event-list">{upcoming.slice(0, 4).map((event, index) => <article className="event-row" key={event.event_id}>
+            <div className={`event-monogram ${eventColors[index % eventColors.length]}`}>{event.event_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()}</div>
+            <div className="event-main"><div className="event-title-line"><strong>{event.event_name}</strong><span className={`status ${event.status === 'CONFIRMED' ? 'confirmed' : ''}`}>{event.status}</span></div><div className="event-type">{event.event_type}</div><div className="event-meta"><span><CalendarDays size={13}/>{eventDate(event.start_datetime)}</span><span><Clock3 size={13}/>{eventTime(event.start_datetime, event.end_datetime)}</span><span><MapPin size={13}/>{event.location || 'Location not set'}</span></div></div>
+            <div className="event-attendees"><strong>{Number(event.expected_attendees).toLocaleString('en-IN')}</strong><small>attendees</small></div>
+          </article>)}</div>}
+        <div className="panel-footer"><span>{loading ? 'Loading records' : `Showing ${Math.min(4, upcoming.length)} of ${upcoming.length} upcoming events`}</span><Link href="/events">Explore events <ArrowUpRight size={14}/></Link></div>
+      </section>
+
+      <aside className="right-column">
+        <section className="panel allocation-panel">
+          <div className="panel-heading"><div><h2>Resource catalogue</h2><p>Active resources by category.</p></div><Boxes size={18} className="panel-icon"/></div>
+          {loading ? <div className="resource-breakdown">Loading resource records…</div>
+            : resources.length === 0 ? <div className="resource-breakdown">No active resources listed.</div>
+            : <div className="resource-breakdown">{Object.entries(resourceGroups).map(([name, count]) => <div key={name}><span><i className="dot dot-violet"/>{name}</span><strong>{count}</strong></div>)}</div>}
+          <Link href="/resources" className="panel-action">Manage resources <ArrowUpRight size={15}/></Link>
+        </section>
+        <section className="tip-card"><div className="tip-icon"><Sparkles size={18}/></div><div><span className="tip-label">A LITTLE NUDGE</span><h3>Plan ahead, stress less.</h3><p>Check resource availability early to avoid last-minute scheduling conflicts.</p><Link href="/resources">Check availability <ArrowUpRight size={14}/></Link></div></section>
+      </aside>
+    </div>
+    <footer className="page-footer"><span>© 2026 Planora Studio</span><span>Thoughtfully planned, beautifully done <span className="footer-star">✳</span></span></footer>
+  </>;
+}
