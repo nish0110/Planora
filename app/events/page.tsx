@@ -1,0 +1,138 @@
+'use client';
+
+import { FormEvent, useEffect, useState } from 'react';
+import { CalendarDays, LoaderCircle, MapPin, Plus, Search, X } from 'lucide-react';
+
+type EventRow = {
+  event_id: number | string;
+  event_name: string;
+  event_type: string;
+  start_datetime: string;
+  location: string | null;
+  expected_attendees: number | string;
+  status: string;
+};
+
+export default function EventsPage() {
+  const [events, setEvents] = useState<EventRow[]>([]);
+  const [query, setQuery] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [messageIsError, setMessageIsError] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const response = await fetch(`/api/events?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'Could not load events.');
+        setEvents(body.data);
+      } catch (err) {
+        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load events.');
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    }, 200);
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [query, refreshKey]);
+
+  async function createEvent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const start = new Date(String(formData.get('startDatetime')));
+    const end = new Date(String(formData.get('endDatetime')));
+    if (end <= start) {
+      setMessage('The end time must be after the start time.');
+      setMessageIsError(true);
+      return;
+    }
+
+    setSaving(true);
+    setMessage('');
+    const payload = {
+      organizerId: Number(formData.get('organizerId')),
+      eventName: String(formData.get('eventName')),
+      eventType: String(formData.get('eventType')),
+      location: String(formData.get('location') || ''),
+      startDatetime: start.toISOString(),
+      endDatetime: end.toISOString(),
+      expectedAttendees: Number(formData.get('expectedAttendees')),
+      totalBudget: Number(formData.get('totalBudget')),
+      description: String(formData.get('description') || ''),
+    };
+
+    try {
+      const response = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Could not create event.');
+      setMessage('Event created successfully.');
+      setMessageIsError(false);
+      setShowForm(false);
+      form.reset();
+      setRefreshKey((current) => current + 1);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Could not create event.');
+      setMessageIsError(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <>
+    <header className="topbar">
+      <div><div className="eyebrow">YOUR WORKSPACE / EVENTS</div><h1>Events</h1><p className="subheading">Every great gathering starts with a plan.</p></div>
+      <button type="button" className="button primary" onClick={() => { setShowForm((open) => !open); setMessage(''); }}><Plus size={17}/> Create event</button>
+    </header>
+
+    {showForm && <section className="panel form-panel">
+      <div className="panel-heading"><div><h2>Create an event</h2><p>Start with the details. You can coordinate resources next.</p></div><button type="button" className="icon-button" onClick={() => setShowForm(false)} aria-label="Close form"><X size={18}/></button></div>
+      <form className="event-form" onSubmit={createEvent}>
+        <label>Event name<input name="eventName" required minLength={3} maxLength={180} placeholder="e.g. Product launch evening"/></label>
+        <label>Event type<select name="eventType" required><option value="Conference">Conference</option><option value="Corporate">Corporate</option><option value="Community">Community</option><option value="Wedding">Wedding</option><option value="Workshop">Workshop</option><option value="Other">Other</option></select></label>
+        <label>Start date & time<input type="datetime-local" name="startDatetime" required/></label>
+        <label>End date & time<input type="datetime-local" name="endDatetime" required/></label>
+        <label>Location<input name="location" maxLength={500} placeholder="Venue or city"/></label>
+        <label>Expected attendees<input type="number" name="expectedAttendees" min="0" max="1000000" defaultValue="50" required/></label>
+        <label>Budget (₹)<input type="number" name="totalBudget" min="0" max="1000000000" step="0.01" defaultValue="0" required/></label>
+        <label>Organizer user ID<input type="number" name="organizerId" min="1" required placeholder="Existing users.user_id"/><small>Use an application user ID from the database, not a PostgreSQL login role.</small></label>
+        <label className="wide-field">Description<textarea name="description" rows={3} maxLength={5000} placeholder="What is this event about?"/></label>
+        <div className="form-actions"><button type="button" className="button secondary" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="button primary" disabled={saving}>{saving && <LoaderCircle size={15} className="spin"/>} Save event</button></div>
+      </form>
+    </section>}
+
+    {message && <div className={`inline-message ${messageIsError ? 'error-cell' : ''}`} role={messageIsError ? 'alert' : 'status'}>{message}</div>}
+
+    <section className="panel table-panel">
+      <div className="panel-heading"><div><h2>All events</h2><p>Live records from your Planora database.</p></div><label className="search-box"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events…" aria-label="Search events"/></label></div>
+      <div className="table-wrap"><table><thead><tr><th>EVENT</th><th>DATE</th><th>LOCATION</th><th>ATTENDEES</th><th>STATUS</th></tr></thead>
+        <tbody>{loading ? <tr><td colSpan={5}>Loading events…</td></tr>
+          : error ? <tr><td colSpan={5} className="error-cell">{error}<br/><small>Check DATABASE_URL and database schema setup.</small></td></tr>
+          : events.length === 0 ? <tr><td colSpan={5}>No events found. Create your first event.</td></tr>
+          : events.map((event) => <tr key={event.event_id}>
+            <td><strong>{event.event_name}</strong><small>{event.event_type}</small></td>
+            <td><CalendarDays size={14} className="inline-icon"/>{new Date(event.start_datetime).toLocaleString()}</td>
+            <td><MapPin size={14} className="inline-icon"/>{event.location || '—'}</td>
+            <td>{Number(event.expected_attendees).toLocaleString('en-IN')}</td>
+            <td><span className={`status ${event.status === 'CONFIRMED' ? 'confirmed' : ''}`}>{event.status}</span></td>
+          </tr>)}
+        </tbody>
+      </table></div>
+      <p className="table-note">Events are loaded from PostgreSQL. Resource reservations are validated against event dates and booking conflicts.</p>
+    </section>
+  </>;
+}
