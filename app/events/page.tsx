@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { CalendarDays, LoaderCircle, MapPin, Plus, Search, X } from 'lucide-react';
 
 type EventRow = {
@@ -12,7 +13,7 @@ type EventRow = {
   expected_attendees: number | string;
   status: string;
 };
-
+type CurrentUser = { role_name: string };
 export default function EventsPage() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [query, setQuery] = useState('');
@@ -23,6 +24,7 @@ export default function EventsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [messageIsError, setMessageIsError] = useState(false);
+  const [user, setUser] = useState<CurrentUser | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -30,10 +32,14 @@ export default function EventsPage() {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`/api/events?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        const body = await response.json();
+        const [response, userResponse] = await Promise.all([
+          fetch(`/api/events?q=${encodeURIComponent(query)}`, { signal: controller.signal }),
+          fetch('/api/auth/me', { signal: controller.signal }),
+        ]);
+        const [body, userBody] = await Promise.all([response.json(), userResponse.json()]);
         if (!response.ok) throw new Error(body.error || 'Could not load events.');
         setEvents(body.data);
+        setUser(userResponse.ok ? userBody.data : null);
       } catch (err) {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load events.');
       } finally {
@@ -61,7 +67,6 @@ export default function EventsPage() {
     setSaving(true);
     setMessage('');
     const payload = {
-      organizerId: Number(formData.get('organizerId')),
       eventName: String(formData.get('eventName')),
       eventType: String(formData.get('eventType')),
       location: String(formData.get('location') || ''),
@@ -93,10 +98,11 @@ export default function EventsPage() {
     }
   }
 
+  const canCreate = user?.role_name === 'ADMIN' || user?.role_name === 'ORGANIZER';
   return <>
     <header className="topbar">
       <div><div className="eyebrow">YOUR WORKSPACE / EVENTS</div><h1>Events</h1><p className="subheading">Every great gathering starts with a plan.</p></div>
-      <button type="button" className="button primary" onClick={() => { setShowForm((open) => !open); setMessage(''); }}><Plus size={17}/> Create event</button>
+      {canCreate && <button type="button" className="button primary" onClick={() => { setShowForm((open) => !open); setMessage(''); }}><Plus size={17}/> Create event</button>}
     </header>
 
     {showForm && <section className="panel form-panel">
@@ -109,7 +115,6 @@ export default function EventsPage() {
         <label>Location<input name="location" maxLength={500} placeholder="Venue or city"/></label>
         <label>Expected attendees<input type="number" name="expectedAttendees" min="0" max="1000000" defaultValue="50" required/></label>
         <label>Budget (₹)<input type="number" name="totalBudget" min="0" max="1000000000" step="0.01" defaultValue="0" required/></label>
-        <label>Organizer user ID<input type="number" name="organizerId" min="1" required placeholder="Existing users.user_id"/><small>Use an application user ID from the database, not a PostgreSQL login role.</small></label>
         <label className="wide-field">Description<textarea name="description" rows={3} maxLength={5000} placeholder="What is this event about?"/></label>
         <div className="form-actions"><button type="button" className="button secondary" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="button primary" disabled={saving}>{saving && <LoaderCircle size={15} className="spin"/>} Save event</button></div>
       </form>
@@ -124,7 +129,7 @@ export default function EventsPage() {
           : error ? <tr><td colSpan={5} className="error-cell">{error}<br/><small>Check DATABASE_URL and database schema setup.</small></td></tr>
           : events.length === 0 ? <tr><td colSpan={5}>No events found. Create your first event.</td></tr>
           : events.map((event) => <tr key={event.event_id}>
-            <td><strong>{event.event_name}</strong><small>{event.event_type}</small></td>
+            <td><Link href={`/events/${event.event_id}`} className="event-table-link"><strong>{event.event_name}</strong><small>{event.event_type}</small></Link></td>
             <td><CalendarDays size={14} className="inline-icon"/>{new Date(event.start_datetime).toLocaleString()}</td>
             <td><MapPin size={14} className="inline-icon"/>{event.location || '—'}</td>
             <td>{Number(event.expected_attendees).toLocaleString('en-IN')}</td>

@@ -15,6 +15,14 @@ CREATE TABLE IF NOT EXISTS users (
   status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE','SUSPENDED')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS app_sessions (
+  session_id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_app_sessions_user_expiry ON app_sessions(user_id, expires_at);
 CREATE TABLE IF NOT EXISTS events (
   event_id BIGSERIAL PRIMARY KEY,
   organizer_id BIGINT NOT NULL REFERENCES users(user_id),
@@ -76,16 +84,57 @@ CREATE TABLE IF NOT EXISTS resource_allocations (
   start_datetime TIMESTAMPTZ NOT NULL,
   end_datetime TIMESTAMPTZ NOT NULL,
   quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
-  allocation_status TEXT NOT NULL DEFAULT 'CONFIRMED' CHECK (allocation_status IN ('PENDING','CONFIRMED','CANCELLED')),
+  allocation_status TEXT NOT NULL DEFAULT 'PENDING' CHECK (allocation_status IN ('PENDING','CONFIRMED','CANCELLED','REJECTED')),
   total_cost NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (total_cost >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (end_datetime > start_datetime)
 );
--- For single-capacity resources (venues, individual staff, one equipment kit), reject overlapping active allocations.
+ALTER TABLE resource_allocations DROP CONSTRAINT IF EXISTS resource_allocations_allocation_status_check;
+ALTER TABLE resource_allocations ADD CONSTRAINT resource_allocations_allocation_status_check
+  CHECK (allocation_status IN ('PENDING','CONFIRMED','CANCELLED','REJECTED'));
+ALTER TABLE resource_allocations ALTER COLUMN allocation_status SET DEFAULT 'PENDING';
+-- Serialize allocation writes for each resource and enforce its available-unit capacity.
 ALTER TABLE resource_allocations DROP CONSTRAINT IF EXISTS no_overlapping_single_resource;
-ALTER TABLE resource_allocations ADD CONSTRAINT no_overlapping_single_resource
-  EXCLUDE USING gist (resource_id WITH =, tstzrange(start_datetime, end_datetime, '[)') WITH &&)
-  WHERE (allocation_status = 'CONFIRMED' AND quantity = 1);
+ALTER TABLE resource_allocations ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+ALTER TABLE resource_allocations ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE OR REPLACE FUNCTION enforce_resource_allocation_capacity() RETURNS TRIGGER LANGUAGE plpgsql AS $$
+DECLARE available_units INTEGER; peak_allocated_units INTEGER;
+BEGIN
+  IF NEW.allocation_status IN ('CANCELLED','REJECTED') THEN RETURN NEW; END IF;
+  SELECT quantity_available INTO available_units
+  FROM resources WHERE resource_id = NEW.resource_id FOR UPDATE;
+  IF available_units IS NULL THEN RAISE EXCEPTION 'Resource does not exist' USING ERRCODE = '23503'; END IF;
+  SELECT COALESCE(MAX(used), 0)::INTEGER INTO peak_allocated_units
+  FROM (
+    SELECT SUM(delta) OVER (ORDER BY point, delta) AS used
+    FROM (
+      SELECT GREATEST(start_datetime, NEW.start_datetime) AS point, quantity AS delta
+      FROM resource_allocations
+      WHERE resource_id = NEW.resource_id
+        AND allocation_status IN ('PENDING','CONFIRMED')
+        AND allocation_id IS DISTINCT FROM NEW.allocation_id
+        AND tstzrange(start_datetime, end_datetime, '[)') && tstzrange(NEW.start_datetime, NEW.end_datetime, '[)')
+      UNION ALL
+      SELECT LEAST(end_datetime, NEW.end_datetime) AS point, -quantity AS delta
+      FROM resource_allocations
+      WHERE resource_id = NEW.resource_id
+        AND allocation_status IN ('PENDING','CONFIRMED')
+        AND allocation_id IS DISTINCT FROM NEW.allocation_id
+        AND tstzrange(start_datetime, end_datetime, '[)') && tstzrange(NEW.start_datetime, NEW.end_datetime, '[)')
+      UNION ALL
+      SELECT NEW.start_datetime, NEW.quantity
+      UNION ALL
+      SELECT NEW.end_datetime, -NEW.quantity
+    ) boundaries
+  ) usage;
+  IF peak_allocated_units > available_units THEN
+    RAISE EXCEPTION 'Resource capacity exceeded' USING ERRCODE = '23P01';
+  END IF;
+  RETURN NEW;
+END; $$;
+DROP TRIGGER IF EXISTS trg_allocation_capacity ON resource_allocations;
+CREATE TRIGGER trg_allocation_capacity BEFORE INSERT OR UPDATE OF resource_id, start_datetime, end_datetime, quantity, allocation_status
+ON resource_allocations FOR EACH ROW EXECUTE FUNCTION enforce_resource_allocation_capacity();
 CREATE TABLE IF NOT EXISTS vendor_profiles (
   vendor_id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL UNIQUE REFERENCES users(user_id) ON DELETE CASCADE,
@@ -114,6 +163,10 @@ CREATE TABLE IF NOT EXISTS event_service_bookings (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CHECK (end_datetime > start_datetime)
 );
+ALTER TABLE event_service_bookings DROP CONSTRAINT IF EXISTS no_overlapping_service_booking;
+ALTER TABLE event_service_bookings ADD CONSTRAINT no_overlapping_service_booking
+  EXCLUDE USING gist (service_id WITH =, tstzrange(start_datetime, end_datetime, '[)') WITH &&)
+  WHERE (booking_status IN ('PENDING','CONFIRMED'));
 CREATE TABLE IF NOT EXISTS event_schedules (
   schedule_id BIGSERIAL PRIMARY KEY,
   event_id BIGINT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -161,6 +214,7 @@ CREATE TABLE IF NOT EXISTS expenses (
   recorded_by BIGINT NOT NULL REFERENCES users(user_id),
   status TEXT NOT NULL DEFAULT 'RECORDED' CHECK (status IN ('RECORDED','VOIDED'))
 );
+CREATE INDEX IF NOT EXISTS idx_registrations_event_status ON event_registrations(event_id, registration_status);
 CREATE TABLE IF NOT EXISTS feedback (
   feedback_id BIGSERIAL PRIMARY KEY,
   event_id BIGINT NOT NULL REFERENCES events(event_id) ON DELETE CASCADE,
@@ -212,10 +266,11 @@ CREATE OR REPLACE FUNCTION get_event_financial_summary(p_event_id BIGINT)
 RETURNS TABLE(event_id BIGINT, planned_budget NUMERIC, allocated_cost NUMERIC, recorded_expenses NUMERIC, remaining_budget NUMERIC)
 LANGUAGE SQL STABLE AS $$
   SELECT e.event_id, e.total_budget,
-    COALESCE(a.total,0), COALESCE(x.total,0),
-    e.total_budget - COALESCE(a.total,0) - COALESCE(x.total,0)
+    COALESCE(a.total,0) + COALESCE(b.total,0), COALESCE(x.total,0),
+    e.total_budget - COALESCE(a.total,0) - COALESCE(b.total,0) - COALESCE(x.total,0)
   FROM events e
   LEFT JOIN (SELECT event_id, SUM(total_cost) total FROM resource_allocations WHERE allocation_status='CONFIRMED' GROUP BY event_id) a ON a.event_id=e.event_id
+  LEFT JOIN (SELECT event_id, SUM(quoted_price) total FROM event_service_bookings WHERE booking_status='CONFIRMED' GROUP BY event_id) b ON b.event_id=e.event_id
   LEFT JOIN (SELECT event_id, SUM(amount) total FROM expenses WHERE status='RECORDED' GROUP BY event_id) x ON x.event_id=e.event_id
   WHERE e.event_id=p_event_id;
 $$;

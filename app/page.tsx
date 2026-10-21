@@ -16,7 +16,15 @@ type EventRow = {
   status: string;
 };
 
-type ResourceRow = { resource_id: number | string; type_name: string };
+type ResourceRow = { resource_id: number | string; type_name: string; quantity_available: number };
+type AllocationRow = {
+  resource_id: number | string;
+  event_id: number | string;
+  type_name: string;
+  quantity: number;
+  allocation_status: string;
+};
+type CurrentUser = { role_name: string };
 
 function money(value: number) {
   return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(value);
@@ -34,6 +42,8 @@ function eventTime(start: string, end: string) {
 export default function Home() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [resources, setResources] = useState<ResourceRow[]>([]);
+  const [allocations, setAllocations] = useState<AllocationRow[]>([]);
+  const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -41,15 +51,20 @@ export default function Home() {
     const controller = new AbortController();
     async function loadOverview() {
       try {
-        const [eventResponse, resourceResponse] = await Promise.all([
+        const [eventResponse, resourceResponse, allocationResponse, userResponse] = await Promise.all([
           fetch('/api/events', { signal: controller.signal }),
           fetch('/api/resources', { signal: controller.signal }),
+          fetch('/api/allocations', { signal: controller.signal }),
+          fetch('/api/auth/me', { signal: controller.signal }),
         ]);
-        const [eventBody, resourceBody] = await Promise.all([eventResponse.json(), resourceResponse.json()]);
+        const [eventBody, resourceBody, allocationBody, userBody] = await Promise.all([eventResponse.json(), resourceResponse.json(), allocationResponse.json(), userResponse.json()]);
         if (!eventResponse.ok) throw new Error(eventBody.error || 'Could not load events.');
         if (!resourceResponse.ok) throw new Error(resourceBody.error || 'Could not load resources.');
+        if (!allocationResponse.ok) throw new Error(allocationBody.error || 'Could not load resource reservations.');
         setEvents(eventBody.data);
         setResources(resourceBody.data);
+        setAllocations(allocationBody.data);
+        setUser(userResponse.ok ? userBody.data : null);
       } catch (err) {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load your overview.');
       } finally {
@@ -68,10 +83,23 @@ export default function Home() {
   }, [events]);
   const expectedAttendees = upcoming.reduce((total, event) => total + Number(event.expected_attendees || 0), 0);
   const plannedBudget = upcoming.reduce((total, event) => total + Number(event.total_budget || 0), 0);
-  const resourceGroups = resources.reduce<Record<string, number>>((groups, resource) => {
-    groups[resource.type_name] = (groups[resource.type_name] || 0) + 1;
+  const upcomingIds = new Set(upcoming.map((event) => String(event.event_id)));
+  const activeAllocations = allocations.filter((allocation) =>
+    upcomingIds.has(String(allocation.event_id)) && ['PENDING', 'CONFIRMED'].includes(allocation.allocation_status),
+  );
+  const totalResourceUnits = resources.reduce((total, resource) => total + Number(resource.quantity_available), 0);
+  const reservedUnits = activeAllocations.reduce((total, allocation) => total + Number(allocation.quantity), 0);
+  const utilization = totalResourceUnits > 0 ? Math.min(100, Math.round(reservedUnits / totalResourceUnits * 100)) : 0;
+  const canSeeBudget = user?.role_name === 'ADMIN' || user?.role_name === 'ORGANIZER';
+  const resourceGroups = resources.reduce<Record<string, { available: number; reserved: number }>>((groups, resource) => {
+    groups[resource.type_name] ??= { available: 0, reserved: 0 };
+    groups[resource.type_name].available += Number(resource.quantity_available);
     return groups;
   }, {});
+  activeAllocations.forEach((allocation) => {
+    resourceGroups[allocation.type_name] ??= { available: 0, reserved: 0 };
+    resourceGroups[allocation.type_name].reserved += Number(allocation.quantity);
+  });
   const eventColors = ['lavender', 'peach', 'mint'];
 
   return <>
@@ -94,8 +122,8 @@ export default function Home() {
     <section className="stats-grid">
       <article className="stat-card"><div className="stat-top"><span>Upcoming events</span><span className="stat-icon violet"><CalendarDays size={18}/></span></div><div className="stat-number">{loading ? '—' : upcoming.length}</div><div className="stat-foot">From your event records</div></article>
       <article className="stat-card"><div className="stat-top"><span>Expected attendees</span><span className="stat-icon amber"><Users size={18}/></span></div><div className="stat-number">{loading ? '—' : expectedAttendees.toLocaleString('en-IN')}</div><div className="stat-foot">Across upcoming events</div></article>
-      <article className="stat-card"><div className="stat-top"><span>Planned budget</span><span className="stat-icon green"><Wallet size={18}/></span></div><div className="stat-number stat-number-currency">{loading ? '—' : money(plannedBudget)}</div><div className="stat-foot">Combined upcoming event budgets</div></article>
-      <article className="stat-card"><div className="stat-top"><span>Active resources</span><span className="stat-icon blue"><Boxes size={18}/></span></div><div className="stat-number">{loading ? '—' : resources.length}</div><div className="stat-foot">Listed in your resource catalogue</div></article>
+      <article className="stat-card"><div className="stat-top"><span>Planned budget</span><span className="stat-icon green"><Wallet size={18}/></span></div><div className="stat-number stat-number-currency">{loading || !canSeeBudget ? '—' : money(plannedBudget)}</div><div className="stat-foot">{canSeeBudget ? 'Combined upcoming event budgets' : 'Available to event managers'}</div></article>
+      <article className="stat-card"><div className="stat-top"><span>Reserved resource units</span><span className="stat-icon blue"><Boxes size={18}/></span></div><div className="stat-number">{loading ? '—' : `${reservedUnits} / ${totalResourceUnits}`}</div><div className="progress"><span style={{ width: `${utilization}%` }}/></div><div className="stat-foot">{utilization}% of catalogue units booked for upcoming events</div></article>
     </section>
 
     <div className="content-grid">
@@ -113,10 +141,12 @@ export default function Home() {
 
       <aside className="right-column">
         <section className="panel allocation-panel">
-          <div className="panel-heading"><div><h2>Resource catalogue</h2><p>Active resources by category.</p></div><Boxes size={18} className="panel-icon"/></div>
+          <div className="panel-heading"><div><h2>Resource utilization</h2><p>Reserved units across upcoming events.</p></div><Boxes size={18} className="panel-icon"/></div>
+          <div className="allocation-total"><strong>{utilization}%</strong><span>{reservedUnits} of {totalResourceUnits} units reserved</span></div>
+          <div className="big-progress"><span style={{ width: `${utilization}%` }}/></div>
           {loading ? <div className="resource-breakdown">Loading resource records…</div>
             : resources.length === 0 ? <div className="resource-breakdown">No active resources listed.</div>
-            : <div className="resource-breakdown">{Object.entries(resourceGroups).map(([name, count]) => <div key={name}><span><i className="dot dot-violet"/>{name}</span><strong>{count}</strong></div>)}</div>}
+            : <div className="resource-breakdown">{Object.entries(resourceGroups).map(([name, counts]) => <div key={name}><span><i className="dot dot-violet"/>{name}</span><strong>{counts.reserved} / {counts.available}</strong></div>)}</div>}
           <Link href="/resources" className="panel-action">Manage resources <ArrowUpRight size={15}/></Link>
         </section>
         <section className="tip-card"><div className="tip-icon"><Sparkles size={18}/></div><div><span className="tip-label">A LITTLE NUDGE</span><h3>Plan ahead, stress less.</h3><p>Check resource availability early to avoid last-minute scheduling conflicts.</p><Link href="/resources">Check availability <ArrowUpRight size={14}/></Link></div></section>
