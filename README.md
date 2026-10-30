@@ -5,7 +5,7 @@ Planora is a Next.js + PostgreSQL DBMS Level 3 project prototype for managing ev
 ## MVP status
 
 Included in this repository:
-- Responsive Planora workspace UI (overview, events, resources, budget/report screens).
+- Responsive Planora workspace UI with live overview metrics, event management, a searchable resource catalogue, resource reservations, and budget reporting.
 - PostgreSQL schema with primary/foreign keys, check constraints, uniqueness, indexes, and a single-capacity resource overlap exclusion constraint.
 - Event list/search/create API connected to PostgreSQL.
 - Resource catalogue API.
@@ -13,10 +13,10 @@ Included in this repository:
 - Audit trigger for resource allocations and expenses; event overview view; financial summary function.
 - Request validation tests.
 
-The overview/resource/budget pages currently use illustrative sample figures; the Events page and APIs connect to PostgreSQL. Authentication/authorization UI, edit/delete flows, complete resource CRUD, and a production-ready multi-unit capacity allocator remain to be implemented before calling this a fully production-ready system. This distinction is deliberate: do not present mock dashboard figures as live data.
+The overview, event list, resource catalogue, allocation form, and budget report read live API records. The budget report compares event budgets with confirmed resource allocations; it is not an expense ledger. Authentication/authorization UI, expense APIs, edit/delete flows, complete resource CRUD, and a production-ready multi-unit capacity allocator remain to be implemented before calling this a fully production-ready system.
 
 ## Stack
-- Next.js 16 / React 19 / TypeScript
+- Next.js 14 / React 18 / TypeScript
 - PostgreSQL
 - `pg` connection pool
 - Zod request validation
@@ -24,7 +24,7 @@ The overview/resource/budget pages currently use illustrative sample figures; th
 - Vitest for validation tests
 
 ## Prerequisites
-- Node.js 22.12 or later (or 24 or later)
+- Node.js 20 or later
 - PostgreSQL 14 or later
 - npm
 
