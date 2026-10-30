@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { pool } from '@/lib/db';
-import { createEventSchema } from '@/lib/validation';
+import { pool } from '../../../lib/db';
+import { createEventSchema } from '../../../lib/validation';
 export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   try {
@@ -16,5 +16,5 @@ export async function POST(req: NextRequest) {
   try {
     const result=await pool.query(`INSERT INTO events(organizer_id,event_name,description,event_type,location,start_datetime,end_datetime,expected_attendees,total_budget,status) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'PLANNING') RETURNING *`,[d.organizerId,d.eventName,d.description??null,d.eventType,d.location??null,d.startDatetime,d.endDatetime,d.expectedAttendees,d.totalBudget]);
     return NextResponse.json({data:result.rows[0]}, {status:201});
-  } catch(e) { console.error('POST /api/events',e); return NextResponse.json({error:'Could not create event. Confirm the organizer ID exists.'},{status:400}); }
+  } catch(e) { console.error('POST /api/events',e); return NextResponse.json({error:'Could not create event. Confirm the organizer ID exists.'},{status:500}); }
 }
