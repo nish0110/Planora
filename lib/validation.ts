@@ -7,7 +7,7 @@ export const createEventSchema = z.object({
   location: z.string().max(500).optional().nullable(),
   startDatetime: z.string().datetime({offset:true}),
   endDatetime: z.string().datetime({offset:true}),
-  expectedAttendees: z.coerce.number().int().min(0).max(1000000).default(0),
+  expectedAttendees: z.coerce.number().int().min(1).max(1000000),
   totalBudget: z.coerce.number().min(0).max(1000000000).default(0),
 }).refine(d => new Date(d.endDatetime) > new Date(d.startDatetime), { path:['endDatetime'], message:'End time must be after start time.' });
 export const createAllocationSchema = z.object({
