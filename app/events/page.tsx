@@ -40,6 +40,7 @@ export default function EventsPage() {
         if (!controller.signal.aborted) setLoading(false);
       }
     }, 200);
+
     return () => {
       window.clearTimeout(timeout);
       controller.abort();
@@ -52,6 +53,7 @@ export default function EventsPage() {
     const formData = new FormData(form);
     const start = new Date(String(formData.get('startDatetime')));
     const end = new Date(String(formData.get('endDatetime')));
+
     if (end <= start) {
       setMessage('The end time must be after the start time.');
       setMessageIsError(true);
@@ -60,6 +62,7 @@ export default function EventsPage() {
 
     setSaving(true);
     setMessage('');
+
     const payload = {
       organizerId: Number(formData.get('organizerId')),
       eventName: String(formData.get('eventName')),
@@ -120,7 +123,7 @@ export default function EventsPage() {
     <section className="panel table-panel">
       <div className="panel-heading"><div><h2>All events</h2><p>Live records from your Planora database.</p></div><label className="search-box"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events…" aria-label="Search events"/></label></div>
       <div className="table-wrap"><table><thead><tr><th>EVENT</th><th>DATE</th><th>LOCATION</th><th>ATTENDEES</th><th>STATUS</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={5}>Loading events…</td></tr>
+        <tbody>{loading ? <tr><td colSpan={5}><LoaderCircle size={14} className="spin"/> Loading events…</td></tr>
           : error ? <tr><td colSpan={5} className="error-cell">{error}<br/><small>Check DATABASE_URL and database schema setup.</small></td></tr>
           : events.length === 0 ? <tr><td colSpan={5}>No events found. Create your first event.</td></tr>
           : events.map((event) => <tr key={event.event_id}>
@@ -136,3 +139,4 @@ export default function EventsPage() {
     </section>
   </>;
 }
+

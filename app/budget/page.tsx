@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Download, TrendingUp, Wallet, LoaderCircle } from 'lucide-react';
+import { ArrowUpRight, Download, LoaderCircle, TrendingUp, Wallet } from 'lucide-react';
 
 type EventBudget = {
   event_id: number | string;
@@ -38,6 +38,7 @@ export default function BudgetPage() {
 
   useEffect(() => {
     const controller = new AbortController();
+
     async function load() {
       try {
         const [eventResponse, allocationResponse] = await Promise.all([
@@ -45,16 +46,23 @@ export default function BudgetPage() {
           fetch('/api/allocations', { signal: controller.signal }),
         ]);
         const [eventBody, allocationBody] = await Promise.all([eventResponse.json(), allocationResponse.json()]);
+
         if (!eventResponse.ok) throw new Error(eventBody.error || 'Could not load event budgets.');
         if (!allocationResponse.ok) throw new Error(allocationBody.error || 'Could not load resource allocations.');
+
         setEvents(eventBody.data);
         setAllocations(allocationBody.data);
       } catch (err) {
-        if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load budget data.');
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : 'Could not load budget data.');
+        }
       } finally {
-        if (!controller.signal.aborted) setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
+
     load();
     return () => controller.abort();
   }, []);
@@ -80,6 +88,7 @@ export default function BudgetPage() {
         new Date(allocation.start_datetime).toISOString(),
       ]),
     ];
+
     const csv = rows.map((row) => row.map(csvCell).join(',')).join('\r\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a');
@@ -107,7 +116,7 @@ export default function BudgetPage() {
     <section className="panel table-panel">
       <div className="panel-heading"><div><h2>Resource allocation costs</h2><p>Live confirmed and cancelled bookings from your database.</p></div><button type="button" className="button secondary" onClick={exportReport} disabled={loading || allocations.length === 0}><Download size={15}/> Export CSV</button></div>
       <div className="table-wrap"><table><thead><tr><th>EVENT</th><th>RESOURCE</th><th>CATEGORY</th><th>START DATE</th><th>ALLOCATED COST</th><th>STATUS</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={6}>Loading budget records…</td></tr>
+        <tbody>{loading ? <tr><td colSpan={6}><LoaderCircle size={14} className="spin"/> Loading budget records…</td></tr>
           : allocations.length === 0 ? <tr><td colSpan={6}>No resource allocations recorded yet. Reserve a resource to see costs here.</td></tr>
           : allocations.map((allocation) => <tr key={allocation.allocation_id}>
             <td><strong>{allocation.event_name}</strong></td>
@@ -116,10 +125,13 @@ export default function BudgetPage() {
             <td>{new Date(allocation.start_datetime).toLocaleDateString()}</td>
             <td>{money(Number(allocation.total_cost))}</td>
             <td><span className={`status ${allocation.allocation_status === 'CONFIRMED' ? 'confirmed' : ''}`}>{allocation.allocation_status}</span></td>
-          </tr>)}</tbody>
+          </tr>)}
+        </tbody>
       </table></div>
       <p className="table-note">Totals use the event and allocation records returned by the API. Expense tracking is not shown because no expense API is available yet.</p>
     </section>
+
     <div className="resource-note"><span className="note-symbol"><ArrowUpRight size={15}/></span><p><strong>Budget calculations</strong><br/>Planned amounts come from each event’s total budget. Only confirmed resource allocations are subtracted; this is not an expense or payment ledger.</p></div>
   </>;
 }
+
