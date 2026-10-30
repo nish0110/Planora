@@ -1,122 +1,85 @@
-# Planora — Intelligent Event Planning & Resource Coordination
+# Planora — Event Planning & Resource Coordination
 
-Planora is a Next.js + PostgreSQL DBMS Level 3 project prototype for managing events, resources, allocations, schedules, vendors, registrations, tasks, budgets, and expenses.
-
-## MVP status
-
-Included in this repository:
-- Responsive Planora workspace UI with live overview metrics, event management, a searchable resource catalogue, resource reservations, and budget reporting.
-- PostgreSQL schema with primary/foreign keys, check constraints, uniqueness, indexes, and a single-capacity resource overlap exclusion constraint.
-- Event list/search/create API connected to PostgreSQL.
-- Resource catalogue API.
-- Resource allocation API with a transaction, resource row lock, availability checks, and conflict responses.
-- Audit trigger for resource allocations and expenses; event overview view; financial summary function.
-- Request validation tests.
-
-The overview, event list, resource catalogue, allocation form, and budget report read live API records. The budget report compares event budgets with confirmed resource allocations; it is not an expense ledger. Authentication/authorization UI, expense APIs, edit/delete flows, complete resource CRUD, and a production-ready multi-unit capacity allocator remain to be implemented before calling this a fully production-ready system.
-
-## Stack
-- Next.js 14 / React 18 / TypeScript
-- PostgreSQL
-- `pg` connection pool
-- Zod request validation
-- Tailwind-free custom CSS for the prototype UI
-- Vitest for validation tests
+Planora is a coursework/local-use event coordination app built with Next.js, TypeScript, and PostgreSQL. It includes role-based accounts, events, resource and vendor bookings, schedules, tasks, attendee registrations, expenses, and budget reporting.
 
 ## Prerequisites
-- Node.js 20 or later
-- PostgreSQL 14 or later
+
+- Node.js 20+
+- PostgreSQL 14+
 - npm
 
 ## Local setup
 
-1. Create a PostgreSQL database named `planora`.
-2. Copy `.env.example` to `.env.local` and set `DATABASE_URL` for your local database.
-3. Install dependencies:
+1. Create a PostgreSQL database named `planora`, and configure `.env.local`:
+
+   ```env
+   DATABASE_URL=postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@localhost:5432/planora
+   PGSSL=false
+   ```
+
+   Keep `.env.local` private; it is ignored by Git. For a database on a teammate's machine, use its reachable host address, not `localhost`, and configure PostgreSQL/network access securely.
+
+2. From the project directory, install dependencies:
 
    ```bash
    npm install
    ```
 
-4. Create tables, constraints, triggers, views, and functions:
+3. Apply the schema as a database role that owns the Planora tables and can install `btree_gist`:
 
    ```bash
-   npm run db:setup
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/schema.sql
+   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f db/seed.sql
    ```
 
-   `db:setup` expects `DATABASE_URL` to be available in your shell environment. If your shell does not load `.env.local` for scripts, run:
+   In Ubuntu/WSL, export the connection string in that terminal first:
 
    ```bash
-   psql "postgresql://postgres:YOUR_PASSWORD@localhost:5432/planora" -f db/schema.sql
-   psql "postgresql://postgres:YOUR_PASSWORD@localhost:5432/planora" -f db/seed.sql
+   export DATABASE_URL='postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@YOUR_DB_HOST:5432/planora'
    ```
 
-5. Seed local demo records (optional):
+   Do not run schema setup concurrently from multiple teammates. It is idempotent for a single project database, but use a migration/backup plan for shared or important data.
 
-   ```bash
-   psql "postgresql://postgres:YOUR_PASSWORD@localhost:5432/planora" -f db/seed.sql
-   ```
-
-6. Start the app:
+4. Start the development server:
 
    ```bash
    npm run dev
    ```
 
-7. Open `http://localhost:3000`.
+5. Open `http://localhost:3000`. The first administrator is configured once at `/register`. If the demo seed has been loaded, this setup replaces the disabled `admin@planora.local` placeholder account with the details you enter. The administrator can create organizer, vendor, staff, and attendee accounts from **Team & access**.
 
-> Seed users have disabled placeholder passwords. Authentication is not implemented in this MVP; do not expose it as a public production service.
+## Features
 
-## API endpoints
+- **Authentication and roles:** bcrypt password hashes, database-backed seven-day sessions, HTTP-only same-site cookies, logout, suspended-account revocation, and server-side role checks. Only the first account can use initial admin setup; later accounts are created by an administrator.
+- **Events:** live dashboard and event list, search, creation, detail view, editing, and cancellation. Cancelling an event cancels its pending/confirmed resource and service bookings.
+- **Resource catalogue:** resource creation/editing, category/search/capacity/price/date filters, availability windows, and reservation requests.
+- **Allocation safety:** transaction-locked inventory, date and venue-capacity validation, pending/confirmed quantity accounting, database trigger capacity enforcement, conflict feedback, and alternative resource suggestions. Owners/admins can confirm or reject requests; event organizers can cancel their reservations.
+- **Event operations:** schedules, assigned tasks with priorities/deadlines/status, attendee self-registration and waitlisting, vendor services and bookings, expenses and voiding, and budget/export reporting.
+- **Administration:** create users by role, suspend/reactivate accounts, and review vendor verification.
 
-- `GET /api/events?q=design` — list/search events.
-- `POST /api/events` — create an event. Required fields: `organizerId`, `eventName`, `eventType`, `startDatetime`, `endDatetime`; optional: `description`, `location`, `expectedAttendees`, `totalBudget`.
-- `GET /api/resources?q=venue&type=Venue` — search active resources.
-- `GET /api/allocations?eventId=1` — list allocations.
-- `POST /api/allocations` — create an allocation. Required fields: `eventId`, `resourceId`, `allocatedBy`, `startDatetime`, `endDatetime`; optional: `quantity`, `totalCost`.
+## Role overview
 
-All date-times passed to the APIs must be ISO 8601 strings with timezone information. Protected endpoints must be secured with authentication/authorization before deployment.
+| Role | Capabilities |
+| --- | --- |
+| Admin | Manage the workspace, all events/resources/bookings, team accounts, and vendor verification |
+| Organizer | Manage owned events and their schedules, tasks, attendees, expenses, and bookings |
+| Vendor | Manage owned resources/services and review bookings for owned resources/services |
+| Staff | View events and update tasks assigned to them |
+| Attendee | View events, self-register, and cancel their own registrations |
 
-## Advanced DBMS concepts demonstrated
+The PostgreSQL login role is separate from the Planora application role. Database roles such as `person1`/`person2` control database access; Planora roles (`ADMIN`, `ORGANIZER`, etc.) are rows in the app's `roles` and `users` tables.
 
-1. **Transactions:** resource allocation is attempted in a transaction and rolled back on failure.
-2. **Triggers:** audit changes to allocations and expenses.
-3. **Function:** `get_event_financial_summary(event_id)`.
-4. **View:** `event_overview`.
-5. **Indexes:** event, allocation, task, expense, and service query indexes.
-6. **Constraints:** foreign keys, check constraints, unique registrations, and overlapping allocation prevention for quantity-one resources.
-
-Example SQL demonstrations:
-
-```sql
-SELECT * FROM event_overview ORDER BY start_datetime;
-SELECT * FROM get_event_financial_summary(1);
-SELECT table_name, record_id, action, changed_at FROM audit_log ORDER BY changed_at DESC;
-EXPLAIN ANALYZE SELECT * FROM events WHERE status = 'PLANNING' ORDER BY start_datetime;
-```
-
-## Tests
+## Validation
 
 ```bash
 npm test
+npm run build
 ```
 
-The tests cover request validation. After the database is configured, add integration tests for duplicate registrations, concurrent booking attempts, authorization, capacity checks, and rollback behavior.
+Tests cover request validation. End-to-end database and concurrency scenarios should be run against a disposable PostgreSQL database before a coursework demo or shared deployment.
 
-## Suggested next development milestones
+## Important limitations
 
-1. Add authentication and server-side role checks.
-2. Build resource create/edit forms and wire the resource page to `/api/resources`.
-3. Add event details, schedules, tasks, registrations, and expense endpoints/UI.
-4. Add integration tests for resource allocation, including two concurrent conflicting requests.
-5. Add multi-unit resource capacity accounting; the current exclusion constraint is intended for resources allocated as one indivisible unit.
-6. Optionally add pgvector-backed semantic venue/vendor search after the core workflow is stable.
-7. Complete project report, ER diagram, screenshots, and individual contribution notes.
+This implementation is for coursework/local use, not a hardened public production deployment. Before exposing it to the internet, add TLS and network/database hardening, security review, login throttling, password reset/change and recovery flows, operational backups/monitoring, and integration tests against the intended hosting setup. Share temporary credentials securely and ask users to change them through a future password-change workflow.
 
-## Security notes
-
-- Never commit `.env.local` or real credentials.
-- Use hashed passwords through a reviewed authentication library when authentication is added.
-- Add role-based authorization to all write APIs before deployment.
-- Configure TLS and restrictive database permissions in hosted environments.
-- Treat this as a coursework MVP, not a production-ready booking service.
+Never commit `.env.local`, database credentials, or other secrets.

@@ -28,4 +28,4 @@ Event organizers must coordinate event schedules, venues, equipment, vendors, at
 - Provide a responsive Next.js interface backed by API routes.
 
 ## Current prototype limitations
-The dashboard contains illustrative sample figures. Authentication, role enforcement, full resource management, complete operational modules, and production-grade multi-unit allocation need further implementation and testing.
+The dashboard and workspace screens use the live PostgreSQL-backed API. Authentication and role enforcement, event operations, resource/service booking workflows, registrations, expenses, and inventory-capacity checks are implemented for the coursework/local-use scope. End-to-end database and concurrency tests should be run against a disposable PostgreSQL environment before deployment.

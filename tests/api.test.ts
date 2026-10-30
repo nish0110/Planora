@@ -1,10 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import type { PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { canManageEvent, getCurrentUser } from '../lib/auth';
 import { pool } from '../lib/db';
 import { GET as getEvents, POST as postEvent } from '../app/api/events/route';
 import { GET as getResources } from '../app/api/resources/route';
 import { GET as getAllocations, POST as postAllocation } from '../app/api/allocations/route';
+
+vi.mock('../lib/auth', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/auth')>();
+  return {
+    ...actual,
+    canManageEvent: vi.fn(),
+    getCurrentUser: vi.fn(),
+  };
+});
 
 vi.mock('../lib/db', () => ({
   pool: {
@@ -14,7 +24,6 @@ vi.mock('../lib/db', () => ({
 }));
 
 const eventPayload = {
-  organizerId: 1,
   eventName: 'Design Summit',
   eventType: 'Conference',
   startDatetime: '2026-10-28T09:00:00+05:30',
@@ -66,6 +75,13 @@ function createClient(results: QueryResult[], finalError?: Error) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getCurrentUser).mockResolvedValue({
+    user_id: 1,
+    full_name: 'Test Admin',
+    email: 'admin@example.test',
+    role_name: 'ADMIN',
+  });
+  vi.mocked(canManageEvent).mockResolvedValue(true);
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
 
@@ -92,7 +108,7 @@ describe('GET /api/events', () => {
     const [sql, values] = vi.mocked(pool.query).mock.calls[0];
     expect(sql).toContain('event_name ILIKE');
     expect(sql).not.toContain("design' OR 1=1");
-    expect(values).toEqual(["design' OR 1=1"]);
+    expect(values).toEqual(["design' OR 1=1", 'ADMIN', 1]);
   });
 
   it('returns 500 when the database query fails', async () => {
@@ -116,6 +132,7 @@ describe('POST /api/events', () => {
     const [sql, values] = vi.mocked(pool.query).mock.calls[0];
     expect(sql).toContain('VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9');
     expect(values).toContain(eventPayload.eventName);
+    expect(values[0]).toBe(1);
   });
 
   it('rejects invalid event input with 400 without querying the database', async () => {
@@ -128,12 +145,12 @@ describe('POST /api/events', () => {
     expect(pool.query).not.toHaveBeenCalled();
   });
 
-  it('returns 500 when event insertion fails', async () => {
+  it('returns 400 when event insertion fails', async () => {
     mockPoolFailure(new Error('database unavailable'));
 
     const response = await postEvent(request('http://localhost/api/events', eventPayload));
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(400);
   });
 });
 
@@ -150,7 +167,7 @@ describe('GET /api/resources', () => {
     expect(await response.json()).toEqual({ data: rows });
     const [sql, values] = vi.mocked(pool.query).mock.calls[0];
     expect(sql).not.toContain('hall');
-    expect(values).toEqual(['hall', 'Venue']);
+    expect(values).toEqual(['hall', 'Venue', null, null, null, null, 1]);
   });
 
   it('returns 500 when the database query fails', async () => {
@@ -174,8 +191,8 @@ describe('GET /api/allocations', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ data: rows });
     const [sql, values] = vi.mocked(pool.query).mock.calls[0];
-    expect(sql).toContain('a.event_id = $1');
-    expect(values).toEqual(['1']);
+    expect(sql).toContain('$1::bigint IS NULL OR a.event_id = $1');
+    expect(values).toEqual(['1', 'ADMIN', 1]);
   });
 
   it('returns 500 when the database query fails', async () => {
@@ -202,9 +219,10 @@ describe('POST /api/allocations', () => {
     const created = { allocation_id: 5, event_id: 1, resource_id: 2 };
     const client = createClient([
       queryResult([]),
-      queryResult([{ resource_id: 2, capacity: null, availability_status: 'ACTIVE' }]),
-      queryResult([{ event_id: 1, expected_attendees: 100 }]),
+      queryResult([{ resource_id: 2, capacity: null, quantity_available: 10, availability_status: 'ACTIVE', type_name: 'Equipment' }]),
+      queryResult([{ event_id: 1, expected_attendees: 100, start_datetime: '2026-10-28T09:00:00+05:30', end_datetime: '2026-10-28T17:00:00+05:30', status: 'PLANNING' }]),
       queryResult([]),
+      queryResult([{ quantity: 0 }]),
       queryResult([created]),
       queryResult([]),
     ]);
@@ -215,8 +233,8 @@ describe('POST /api/allocations', () => {
 
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({ data: created });
-    const [insertSql, insertValues] = client.query.mock.calls[4];
-    expect(insertSql).toContain('VALUES($1,$2,$3,$4,$5,$6');
+    const [insertSql, insertValues] = client.query.mock.calls[5];
+    expect(insertSql).toContain("VALUES($1, $2, $3, $4, $5, $6, 'PENDING', $7)");
     expect(insertValues).toContain(allocationPayload.resourceId);
     expect(client.query).toHaveBeenLastCalledWith('COMMIT');
     expect(client.release).toHaveBeenCalledOnce();
@@ -226,9 +244,10 @@ describe('POST /api/allocations', () => {
     const conflict = Object.assign(new Error('overlapping allocation'), { code: '23P01' });
     const client = createClient([
       queryResult([]),
-      queryResult([{ resource_id: 2, capacity: null, availability_status: 'ACTIVE' }]),
-      queryResult([{ event_id: 1, expected_attendees: 100 }]),
+      queryResult([{ resource_id: 2, capacity: null, quantity_available: 10, availability_status: 'ACTIVE', type_name: 'Equipment' }]),
+      queryResult([{ event_id: 1, expected_attendees: 100, start_datetime: '2026-10-28T09:00:00+05:30', end_datetime: '2026-10-28T17:00:00+05:30', status: 'PLANNING' }]),
       queryResult([]),
+      queryResult([{ quantity: 0 }]),
     ], conflict);
 
     const response = await postAllocation(

@@ -1,5 +1,5 @@
--- Optional local demo data. Run after schema.sql.
--- Password hash is intentionally unusable; authentication is not enabled in this MVP.
+-- Optional local demo data. Run after schema.sql. The placeholder admin is
+-- activated by first-time /register setup; the demo organizer stays disabled.
 INSERT INTO users(role_id,full_name,email,password_hash) VALUES
  ((SELECT role_id FROM roles WHERE role_name='ADMIN'),'Planora Demo Admin','admin@planora.local','DISABLED_DEMO_ACCOUNT'),
  ((SELECT role_id FROM roles WHERE role_name='ORGANIZER'),'Alex Morgan','alex@planora.local','DISABLED_DEMO_ACCOUNT')

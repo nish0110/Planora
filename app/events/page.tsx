@@ -1,6 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { CalendarDays, LoaderCircle, MapPin, Plus, Search, X } from 'lucide-react';
 
 type EventRow = {
@@ -12,7 +13,7 @@ type EventRow = {
   expected_attendees: number | string;
   status: string;
 };
-
+type CurrentUser = { role_name: string };
 export default function EventsPage() {
   const [events, setEvents] = useState<EventRow[]>([]);
   const [query, setQuery] = useState('');
@@ -23,6 +24,7 @@ export default function EventsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [messageIsError, setMessageIsError] = useState(false);
+  const [user, setUser] = useState<CurrentUser | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -30,17 +32,20 @@ export default function EventsPage() {
       setLoading(true);
       setError('');
       try {
-        const response = await fetch(`/api/events?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        const body = await response.json();
+        const [response, userResponse] = await Promise.all([
+          fetch(`/api/events?q=${encodeURIComponent(query)}`, { signal: controller.signal }),
+          fetch('/api/auth/me', { signal: controller.signal }),
+        ]);
+        const [body, userBody] = await Promise.all([response.json(), userResponse.json()]);
         if (!response.ok) throw new Error(body.error || 'Could not load events.');
         setEvents(body.data);
+        setUser(userResponse.ok ? userBody.data : null);
       } catch (err) {
         if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load events.');
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
     }, 200);
-
     return () => {
       window.clearTimeout(timeout);
       controller.abort();
@@ -53,7 +58,6 @@ export default function EventsPage() {
     const formData = new FormData(form);
     const start = new Date(String(formData.get('startDatetime')));
     const end = new Date(String(formData.get('endDatetime')));
-
     if (end <= start) {
       setMessage('The end time must be after the start time.');
       setMessageIsError(true);
@@ -62,9 +66,7 @@ export default function EventsPage() {
 
     setSaving(true);
     setMessage('');
-
     const payload = {
-      organizerId: Number(formData.get('organizerId')),
       eventName: String(formData.get('eventName')),
       eventType: String(formData.get('eventType')),
       location: String(formData.get('location') || ''),
@@ -96,10 +98,11 @@ export default function EventsPage() {
     }
   }
 
+  const canCreate = user?.role_name === 'ADMIN' || user?.role_name === 'ORGANIZER';
   return <>
     <header className="topbar">
       <div><div className="eyebrow">YOUR WORKSPACE / EVENTS</div><h1>Events</h1><p className="subheading">Every great gathering starts with a plan.</p></div>
-      <button type="button" className="button primary" onClick={() => { setShowForm((open) => !open); setMessage(''); }}><Plus size={17}/> Create event</button>
+      {canCreate && <button type="button" className="button primary" onClick={() => { setShowForm((open) => !open); setMessage(''); }}><Plus size={17}/> Create event</button>}
     </header>
 
     {showForm && <section className="panel form-panel">
@@ -112,7 +115,6 @@ export default function EventsPage() {
         <label>Location<input name="location" maxLength={500} placeholder="Venue or city"/></label>
         <label>Expected attendees<input type="number" name="expectedAttendees" min="0" max="1000000" defaultValue="50" required/></label>
         <label>Budget (₹)<input type="number" name="totalBudget" min="0" max="1000000000" step="0.01" defaultValue="0" required/></label>
-        <label>Organizer user ID<input type="number" name="organizerId" min="1" required placeholder="Existing users.user_id"/><small>Use an application user ID from the database, not a PostgreSQL login role.</small></label>
         <label className="wide-field">Description<textarea name="description" rows={3} maxLength={5000} placeholder="What is this event about?"/></label>
         <div className="form-actions"><button type="button" className="button secondary" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="button primary" disabled={saving}>{saving && <LoaderCircle size={15} className="spin"/>} Save event</button></div>
       </form>
@@ -123,11 +125,11 @@ export default function EventsPage() {
     <section className="panel table-panel">
       <div className="panel-heading"><div><h2>All events</h2><p>Live records from your Planora database.</p></div><label className="search-box"><Search size={16}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search events…" aria-label="Search events"/></label></div>
       <div className="table-wrap"><table><thead><tr><th>EVENT</th><th>DATE</th><th>LOCATION</th><th>ATTENDEES</th><th>STATUS</th></tr></thead>
-        <tbody>{loading ? <tr><td colSpan={5}><LoaderCircle size={14} className="spin"/> Loading events…</td></tr>
+        <tbody>{loading ? <tr><td colSpan={5}>Loading events…</td></tr>
           : error ? <tr><td colSpan={5} className="error-cell">{error}<br/><small>Check DATABASE_URL and database schema setup.</small></td></tr>
           : events.length === 0 ? <tr><td colSpan={5}>No events found. Create your first event.</td></tr>
           : events.map((event) => <tr key={event.event_id}>
-            <td><strong>{event.event_name}</strong><small>{event.event_type}</small></td>
+            <td><Link href={`/events/${event.event_id}`} className="event-table-link"><strong>{event.event_name}</strong><small>{event.event_type}</small></Link></td>
             <td><CalendarDays size={14} className="inline-icon"/>{new Date(event.start_datetime).toLocaleString()}</td>
             <td><MapPin size={14} className="inline-icon"/>{event.location || '—'}</td>
             <td>{Number(event.expected_attendees).toLocaleString('en-IN')}</td>
@@ -138,21 +140,4 @@ export default function EventsPage() {
       <p className="table-note">Events are loaded from PostgreSQL. Resource reservations are validated against event dates and booking conflicts.</p>
     </section>
   </>;
-import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
-import { Plus, Search, CalendarDays, MapPin, ArrowUpRight, X, LoaderCircle } from 'lucide-react';
-type EventRow={event_id:number;event_name:string;event_type:string;start_datetime:string;location:string|null;expected_attendees:number;status:string};
-function errorMessage(error: unknown, fallback: string) {
- return error instanceof Error ? error.message : fallback;
 }
-export default function EventsPage(){
- const [events,setEvents]=useState<EventRow[]>([]);const [q,setQ]=useState('');const [loading,setLoading]=useState(true);const [error,setError]=useState('');const [showForm,setShowForm]=useState(false);const [saving,setSaving]=useState(false);const [message,setMessage]=useState('');
- async function load(){setLoading(true);try{const r=await fetch('/api/events?q='+encodeURIComponent(q));const j=await r.json();if(!r.ok)throw new Error(j.error);setEvents(j.data);setError('');}catch(e){setError(errorMessage(e,'Could not load events.'));}finally{setLoading(false);}}
- useEffect(()=>{const t=setTimeout(load,250);return()=>clearTimeout(t)},[q]);
- async function create(e:FormEvent<HTMLFormElement>){e.preventDefault();setSaving(true);setMessage('');const f=new FormData(e.currentTarget);const payload={organizerId:Number(f.get('organizerId')||1),eventName:f.get('eventName'),eventType:f.get('eventType'),location:f.get('location'),startDatetime:new Date(String(f.get('startDatetime'))).toISOString(),endDatetime:new Date(String(f.get('endDatetime'))).toISOString(),expectedAttendees:Number(f.get('expectedAttendees')||0),totalBudget:Number(f.get('totalBudget')||0),description:f.get('description')};try{const r=await fetch('/api/events',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const j=await r.json();if(!r.ok)throw new Error(j.error||'Could not create event');setMessage('Event created successfully.');setShowForm(false);(e.target as HTMLFormElement).reset();await load();}catch(err){setMessage(errorMessage(err,'Could not create event.'));}finally{setSaving(false)}}
- return <><header className="topbar"><div><div className="eyebrow">YOUR WORKSPACE / EVENTS</div><h1>Events</h1><p className="subheading">Every great gathering starts with a plan.</p></div><button className="button primary" onClick={()=>setShowForm(v=>!v)}><Plus size={17}/> Create event</button></header>
- {showForm&&<section className="panel form-panel"><div className="panel-heading"><div><h2>Create an event</h2><p>Start with the details. You can coordinate resources next.</p></div><button className="icon-button" onClick={()=>setShowForm(false)} aria-label="Close form"><X size={18}/></button></div><form className="event-form" onSubmit={create}><label>Event name<input name="eventName" required minLength={3} maxLength={180} placeholder="e.g. Product launch evening"/></label><label>Event type<select name="eventType" required><option value="Conference">Conference</option><option value="Corporate">Corporate</option><option value="Community">Community</option><option value="Wedding">Wedding</option><option value="Workshop">Workshop</option><option value="Other">Other</option></select></label><label>Start date & time<input type="datetime-local" name="startDatetime" required/></label><label>End date & time<input type="datetime-local" name="endDatetime" required/></label><label>Location<input name="location" placeholder="Venue or city"/></label><label>Expected attendees<input type="number" name="expectedAttendees" min="0" defaultValue="50" required/></label><label>Budget (₹)<input type="number" name="totalBudget" min="0" step="0.01" defaultValue="0" required/></label><label>Organizer user ID<input type="number" name="organizerId" min="1" defaultValue="1" required/><small>Use an existing users.user_id from your database.</small></label><label className="wide-field">Description<textarea name="description" rows={3} placeholder="What is this event about?"/></label><div className="form-actions"><button type="button" className="button secondary" onClick={()=>setShowForm(false)}>Cancel</button><button type="submit" className="button primary" disabled={saving}>{saving&&<LoaderCircle size={15} className="spin"/>} Save event</button></div></form></section>}
- {message&&<div className="inline-message">{message}</div>}
- <section className="panel table-panel"><div className="panel-heading"><div><h2>All events</h2><p>Live records from your Planora database.</p></div><div className="search-box"><Search size={16}/><input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search events…" aria-label="Search events"/></div></div><div className="table-wrap"><table><thead><tr><th>EVENT</th><th>DATE</th><th>LOCATION</th><th>ATTENDEES</th><th>STATUS</th><th></th></tr></thead><tbody>{loading?<tr><td colSpan={6}>Loading events…</td></tr>:error?<tr><td colSpan={6} className="error-cell">{error}<br/><small>Set DATABASE_URL, then run `npm run db:setup`.</small></td></tr>:events.length===0?<tr><td colSpan={6}>No events found. Create your first event.</td></tr>:events.map(e=><tr key={e.event_id}><td><strong>{e.event_name}</strong><small>{e.event_type}</small></td><td><CalendarDays size={14} className="inline-icon"/>{new Date(e.start_datetime).toLocaleString()}</td><td><MapPin size={14} className="inline-icon"/>{e.location||'—'}</td><td>{e.expected_attendees}</td><td><span className={`status ${e.status==='CONFIRMED'?'confirmed':''}`}>{e.status}</span></td><td><button className="icon-button" aria-label="Event row"><ArrowUpRight size={17}/></button></td></tr>)}</tbody></table></div><p className="table-note">Events are loaded from PostgreSQL. Booking allocations use database transactions and overlap constraints.</p></section><div className="resource-note"><span className="note-symbol">✦</span><p><strong>Next step</strong><br/>Add resources in the Resource Library, then use the allocation API to reserve them against an event and validate booking conflicts.</p></div></>;
-}
-
