@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LoaderCircle, Sparkles } from 'lucide-react';
+import { assertSuccessfulJsonResponse } from '@/lib/api-response';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,8 +22,7 @@ export default function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: form.get('email'), password: form.get('password') }),
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Could not sign in.');
+      await assertSuccessfulJsonResponse(response, 'Could not sign in.');
       const next = new URLSearchParams(window.location.search).get('next');
       const destination = next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\')
         ? new URL(next, window.location.origin)

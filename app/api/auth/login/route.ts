@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { pool } from '@/lib/db';
 import { createSession } from '@/lib/auth';
+import { authDatabaseError } from '@/lib/auth-errors';
 
 export const runtime = 'nodejs';
 
@@ -34,6 +35,6 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('POST /api/auth/login', error);
-    return NextResponse.json({ error: 'Could not sign in. Check database setup.' }, { status: 500 });
+    return NextResponse.json({ error: authDatabaseError(error, 'login') }, { status: 500 });
   }
 }

@@ -3,6 +3,8 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { pool } from '@/lib/db';
 import { createSession } from '@/lib/auth';
+import { authDatabaseError } from '@/lib/auth-errors';
+import type { PoolClient } from 'pg';
 
 export const runtime = 'nodejs';
 
@@ -21,9 +23,12 @@ export async function POST(request: NextRequest) {
     }, { status: 400 });
   }
 
-  const client = await pool.connect();
+  let client: PoolClient | undefined;
+  let transactionStarted = false;
   try {
+    client = await pool.connect();
     await client.query('BEGIN');
+    transactionStarted = true;
     await client.query('SELECT pg_advisory_xact_lock(762913458)');
     const adminExists = await client.query(
       `SELECT 1 FROM users u JOIN roles r USING(role_id)
@@ -31,6 +36,7 @@ export async function POST(request: NextRequest) {
     );
     if (adminExists.rowCount) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       return NextResponse.json({ error: 'Initial admin setup is already complete. Ask an administrator to create your account.' }, { status: 409 });
     }
 
@@ -52,6 +58,7 @@ export async function POST(request: NextRequest) {
       const users = await client.query('SELECT COUNT(*)::int AS count FROM users');
       if (users.rows[0].count > 0) {
         await client.query('ROLLBACK');
+        transactionStarted = false;
         return NextResponse.json({ error: 'Admin setup is unavailable because accounts already exist. Ask a database administrator to enable an admin account.' }, { status: 409 });
       }
       const result = await client.query(
@@ -63,18 +70,25 @@ export async function POST(request: NextRequest) {
       user = result.rows[0];
     }
     await client.query('COMMIT');
+    transactionStarted = false;
 
     const response = NextResponse.json({ data: { ...user, role_name: 'ADMIN' } }, { status: 201 });
     await createSession(Number(user.user_id), response);
     return response;
   } catch (error) {
-    await client.query('ROLLBACK');
+    if (client && transactionStarted) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('POST /api/auth/register rollback', rollbackError);
+      }
+    }
     if ((error as { code?: string })?.code === '23505') {
       return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 });
     }
     console.error('POST /api/auth/register', error);
-    return NextResponse.json({ error: 'Could not create the administrator account.' }, { status: 500 });
+    return NextResponse.json({ error: authDatabaseError(error, 'register') }, { status: 500 });
   } finally {
-    client.release();
+    client?.release();
   }
 }

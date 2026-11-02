@@ -4,6 +4,7 @@ import { FormEvent, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { LoaderCircle, Sparkles } from 'lucide-react';
+import { assertSuccessfulJsonResponse } from '@/lib/api-response';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -21,8 +22,7 @@ export default function RegisterPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fullName: form.get('fullName'), email: form.get('email'), password: form.get('password') }),
       });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Could not complete initial setup.');
+      await assertSuccessfulJsonResponse(response, 'Could not complete initial setup.');
       router.replace('/');
       router.refresh();
     } catch (err) {

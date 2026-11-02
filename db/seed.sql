@@ -19,3 +19,21 @@ AND NOT EXISTS(SELECT 1 FROM resources r WHERE r.resource_name='Riverside Hall')
 INSERT INTO resources(resource_type_id,resource_name,description,location,capacity,quantity_available,base_price)
 SELECT t.resource_type_id,'Studio 08 AV Kit','Projector, two wireless microphones and speakers.','Equipment inventory',NULL,1,8500 FROM resource_types t WHERE t.type_name='Equipment'
 AND NOT EXISTS(SELECT 1 FROM resources r WHERE r.resource_name='Studio 08 AV Kit');
+INSERT INTO resources(resource_type_id,resource_name,description,location,capacity,quantity_available,base_price)
+SELECT t.resource_type_id,d.resource_name,d.description,d.location,d.capacity,d.quantity_available,d.base_price
+FROM (VALUES
+ ('Venue','Skyline Rooftop','Open-air rooftop with a city skyline view.','Central Bengaluru',180,1,58000),
+ ('Venue','Garden Courtyard','Private landscaped courtyard for celebrations.','Indiranagar',140,1,36000),
+ ('Equipment','Stage Lighting Set','Wash lights, spot fixtures, controller, and cabling.','Equipment warehouse',NULL,2,12000),
+ ('Equipment','Wireless Microphone Kit','Four wireless microphones with receiver and cases.','Equipment warehouse',NULL,3,4200),
+ ('Equipment','Banquet Chair Set','Stackable chairs for conferences and ceremonies.','Equipment warehouse',NULL,300,35),
+ ('Staff','Lead Event Coordinator','On-site event lead for vendor and schedule coordination.','Bengaluru',NULL,4,6500),
+ ('Staff','Registration Crew Member','Guest check-in and attendee assistance.','Bengaluru',NULL,12,1800),
+ ('Staff','Event Safety Officer','Certified event safety and crowd-flow support.','Bengaluru',NULL,6,3200),
+ ('Service','Garden Table Catering','Vegetarian buffet service with setup and cleanup.','Bengaluru',NULL,2,28000),
+ ('Service','Floral Design Package','Custom stage and table floral arrangements.','Bengaluru',NULL,3,14500),
+ ('Service','Event Photography','Full-day event coverage with edited digital gallery.','Bengaluru',NULL,4,18000),
+ ('Service','Live Acoustic Duo','Two-piece live music set with compact sound setup.','Bengaluru',NULL,2,22000)
+) AS d(type_name,resource_name,description,location,capacity,quantity_available,base_price)
+JOIN resource_types t ON t.type_name=d.type_name
+WHERE NOT EXISTS(SELECT 1 FROM resources r WHERE r.resource_name=d.resource_name);
