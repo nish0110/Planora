@@ -13,6 +13,11 @@
 | DB-01 | Update/delete allocation | Audit record written | Trigger integration |
 | DB-02 | Read event overview | Event and organizer summary returned | SQL integration |
 | DB-03 | Call financial summary function | Calculated totals returned | SQL integration |
-| SEC-01 | Unauthorized user changes event | Request denied after auth is implemented | Security integration |
+| SEC-01 | Unauthorized user changes event or event metadata | Request denied by server-side role/ownership checks | Security integration |
+| MONGO-01 | Import vendor item twice with the same vendor/source/external ID | A single MongoDB catalog document is refreshed idempotently | MongoDB API integration |
+| MONGO-02 | Include nested price, inventory, availability, booking, or budget keys in flexible fields | Request rejected before MongoDB write | Unit / API validation |
+| MONGO-03 | Vendor imports a catalog item for another vendor ID | HTTP 403 and no MongoDB write | Authorization integration |
+| MONGO-04 | Non-owner reads or updates event metadata | Request denied and no MongoDB write | Authorization integration |
+| MONGO-05 | MongoDB is stopped while a document feature is requested | Clear HTTP 503; PostgreSQL-backed workflows remain available | Failure integration |
 
-Record actual results, execution date, and evidence screenshots during final testing. The repository currently includes unit tests for request validation; database integration cases remain to be executed in a configured local environment.
+Record actual results, execution date, and evidence screenshots during final testing. Vitest includes request-validation and mocked PostgreSQL/MongoDB API tests. Live database, failure, and concurrency integration cases remain to be executed in configured local environments.

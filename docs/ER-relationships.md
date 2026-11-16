@@ -17,3 +17,12 @@
 - `events (1) → (M) feedback`; one user can leave at most one feedback record per event.
 
 `resource_allocations` and `event_service_bookings` are separate because physical resources and vendor-delivered services can have different availability and confirmation rules.
+
+## MongoDB document collections
+
+MongoDB is a separate document store, not an extension of the relational ER model:
+
+- `vendor_catalog_items` stores imported descriptive fields (source, external ID, title, description, category, tags, and flexible attributes). Its unique key is `(vendorId, source, externalId)`.
+- `event_metadata` stores optional flexible metadata and HTTPS attachment references, with one document per PostgreSQL `event_id`.
+
+The `vendorId` and `eventId` values are references validated against PostgreSQL. MongoDB does not duplicate vendor/event records or contain prices, budgets, inventory, availability, or booking state. These references are not PostgreSQL foreign keys; cleanup of stale document references is an operational consideration.
