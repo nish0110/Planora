@@ -441,3 +441,113 @@
     flex-wrap: wrap;
   }
 }
+
+.event-form textarea,
+.compact-form textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 10px 11px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline-color: #a79be7;
+  font: 400 11px 'DM Sans', sans-serif;
+  resize: vertical;
+}
+
+.mongo-metadata-form {
+  padding-bottom: 16px;
+}
+
+.mongo-metadata-form textarea {
+  font-family: Consolas, monospace;
+  line-height: 1.5;
+}
+
+.mongo-save-actions {
+  padding: 0 20px 18px;
+}
+
+.mongo-note {
+  margin: 0 0 16px;
+}
+
+.mongo-catalog-panel {
+  margin-top: 18px;
+}
+
+.mongo-catalog-list {
+  display: grid;
+}
+
+.mongo-catalog-item {
+  padding: 17px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.mongo-catalog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mongo-catalog-heading h3 {
+  margin: 8px 0 0;
+  font: 700 13px Manrope, sans-serif;
+}
+
+.mongo-catalog-heading > small,
+.mongo-catalog-meta {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.mongo-catalog-item > p {
+  margin: 10px 0;
+  color: #77758b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.mongo-catalog-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mongo-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 11px 0;
+}
+
+.mongo-tags span {
+  padding: 4px 7px;
+  border-radius: 5px;
+  background: #f2efff;
+  color: #6c58ca;
+  font-size: 9px;
+}
+
+.mongo-catalog-details {
+  margin: 11px 0;
+  color: #77758b;
+  font-size: 10px;
+}
+
+.mongo-catalog-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.mongo-catalog-details pre {
+  overflow: auto;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f7f6fb;
+  font-size: 9px;
+}

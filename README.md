@@ -1,11 +1,12 @@
 # Planora — Event Planning & Resource Coordination
 
-Planora is a coursework/local-use event coordination app built with Next.js, TypeScript, and PostgreSQL. It includes role-based accounts, events, resource and vendor bookings, schedules, tasks, attendee registrations, expenses, and budget reporting.
+Planora is a coursework/local-use event coordination app built with Next.js, TypeScript, PostgreSQL, and MongoDB. PostgreSQL owns transactional records; MongoDB adds optional imported vendor catalog descriptions and flexible event metadata/attachment references.
 
 ## Prerequisites
 
 - Node.js 20+
 - PostgreSQL 14+
+- MongoDB 6.0+
 - npm
 
 ## Local setup
@@ -15,6 +16,8 @@ Planora is a coursework/local-use event coordination app built with Next.js, Typ
    ```env
    DATABASE_URL=postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@localhost:5432/planora
    PGSSL=false
+   MONGODB_URI=mongodb://127.0.0.1:27017/planora
+   MONGODB_DB=planora
    ```
 
    Keep `.env.local` private; it is ignored by Git. For a database on a teammate's machine, use its reachable host address, not `localhost`, and configure PostgreSQL/network access securely.
@@ -40,7 +43,9 @@ Planora is a coursework/local-use event coordination app built with Next.js, Typ
 
    Do not run schema setup concurrently from multiple teammates. It is idempotent for a single project database, but use a migration/backup plan for shared or important data.
 
-4. Start the development server:
+   MongoDB does not need a SQL schema setup. Start the local MongoDB service or configure `MONGODB_URI` to a reachable MongoDB deployment. Planora creates its two collections and required indexes on first use. MongoDB credentials in a URI must be URL-encoded as required by the driver.
+
+4. Start the development server after both database services are available:
 
    ```bash
    npm run dev
@@ -56,6 +61,7 @@ Planora is a coursework/local-use event coordination app built with Next.js, Typ
 - **Allocation safety:** transaction-locked inventory, date and venue-capacity validation, pending/confirmed quantity accounting, database trigger capacity enforcement, conflict feedback, and alternative resource suggestions. Owners/admins can confirm or reject requests; event organizers can cancel their reservations.
 - **Event operations:** schedules, assigned tasks with priorities/deadlines/status, attendee self-registration and waitlisting, vendor services and bookings, expenses and voiding, and budget/export reporting.
 - **Administration:** create users by role, suspend/reactivate accounts, and review vendor verification.
+- **MongoDB documents:** store imported vendor catalog descriptions/tags and flexible event notes/HTTPS attachment references. Vendor and event IDs refer to PostgreSQL records; MongoDB does not store prices, budgets, availability, inventory quantities, bookings, users, or event core records.
 
 ## Role overview
 
@@ -76,10 +82,10 @@ npm test
 npm run build
 ```
 
-Tests cover request validation. End-to-end database and concurrency scenarios should be run against a disposable PostgreSQL database before a coursework demo or shared deployment.
+Tests cover request validation and mocked PostgreSQL/MongoDB API workflows. End-to-end database and concurrency scenarios should be run against configured disposable PostgreSQL and MongoDB instances before a coursework demo or shared deployment.
 
 ## Important limitations
 
-This implementation is for coursework/local use, not a hardened public production deployment. Before exposing it to the internet, add TLS and network/database hardening, security review, login throttling, password reset/change and recovery flows, operational backups/monitoring, and integration tests against the intended hosting setup. Share temporary credentials securely and ask users to change them through a future password-change workflow.
+This implementation is for coursework/local use, not a hardened public production deployment. MongoDB outage affects only document features; PostgreSQL remains the source of truth for transactional data. Before exposing it to the internet, add TLS and network/database hardening for both databases, security review, login throttling, password reset/change and recovery flows, operational backups/monitoring, orphan-document cleanup, and integration tests against the intended hosting setup. Share temporary credentials securely and ask users to change them through a future password-change workflow.
 
 Never commit `.env.local`, database credentials, or other secrets.

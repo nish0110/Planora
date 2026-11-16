@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, CalendarDays, LoaderCircle, MapPin, Plus, Trash2, Users, Wallet } from 'lucide-react';
+import { EventMetadataPanel } from '@/components/event-metadata-panel';
 
 type EventRecord = {
   event_id: number;
@@ -258,6 +259,8 @@ export default function EventDetailsPage() {
       <article className="stat-card"><div className="stat-top"><span>Resource bookings</span><span className="stat-icon blue"><Wallet size={17}/></span></div><div className="stat-number">{summary.active_resource_bookings}</div><div className="stat-foot">Pending or confirmed</div></article>
       <article className="stat-card"><div className="stat-top"><span>Budget remaining</span><span className="stat-icon green"><Wallet size={17}/></span></div><div className="stat-number stat-number-currency">{new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(Number(summary.remaining_budget))}</div><div className="stat-foot">After confirmed bookings and expenses</div></article>
     </section>}
+
+    {canManage && <EventMetadataPanel eventId={eventId}/>}
 
     {editing && canManage && <section className="panel form-panel"><div className="panel-heading"><div><h2>Edit event</h2><p>Changes are saved to the shared event record.</p></div></div>
       <form className="event-form" onSubmit={saveEvent}>

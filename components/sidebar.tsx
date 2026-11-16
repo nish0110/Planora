@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { CalendarDays, LayoutDashboard, Boxes, Wallet, Settings, Sparkles, CircleHelp, LogOut, BriefcaseBusiness, ClipboardList } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, Boxes, Wallet, Settings, Sparkles, CircleHelp, LogOut, BriefcaseBusiness, ClipboardList, BookOpen } from 'lucide-react';
 
 type CurrentUser = { full_name: string; role_name: string };
 const links = [
@@ -50,6 +50,7 @@ export function Sidebar() {
     <div className="workspace"><div className="workspace-icon">PS</div><div><strong>Planora Studio</strong><small>Workspace</small></div><span className="chevron">⌄</span></div>
     <div className="nav-label">WORKSPACE</div>
     <nav>{links.map((link) => { const Icon = link.icon; return <Link key={link.href} href={link.href} className={`nav-link ${path === link.href || path.startsWith(`${link.href}/`) && link.href !== '/' ? 'active' : ''}`}><Icon size={18}/>{link.label}</Link>; })}
+    {(user?.role_name === 'ADMIN' || user?.role_name === 'VENDOR') && <Link href="/vendor-catalog" className={`nav-link ${path.startsWith('/vendor-catalog') ? 'active' : ''}`}><BookOpen size={18}/>Imported catalog</Link>}
       {user?.role_name === 'ADMIN' && <Link href="/team" className={`nav-link ${path.startsWith('/team') ? 'active' : ''}`}><Settings size={18}/>Team & access</Link>}
     </nav>
     <div className="sidebar-bottom">
