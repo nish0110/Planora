@@ -14,7 +14,6 @@
 12. UI screenshots
 13. Test plan, test cases, and results
 14. Security considerations and limitations
-15. Team member contributions
 16. Conclusion and future enhancements
 
 ## Problem statement

@@ -336,17 +336,6 @@ The repository's `docs/test-plan.md` contains the scenario list. Record dates, d
 - The project dependency audit reported 18 vulnerabilities during dependency restoration (12 moderate, 3 high, 3 critical). Review the dependency audit and upgrade compatibly before deployment; this report does not apply automatic breaking upgrades.
 - The demo seed contains disabled placeholder accounts, not functional credentials. Configure the first administrator through `/register`.
 
-## 15. Team member contributions
-
-The repository and supplied project materials do not identify team member names or a contribution split. To keep the report factual, those details must be completed from the actual team's records:
-
-| Team member | Verified contribution |
-|---|---|
-| `[Add actual name]` | `[Describe work actually completed]` |
-| `[Add actual name]` | `[Describe work actually completed]` |
-
-If this is an individual project, replace the table with the author's actual name and contribution. Do not retain placeholders in a submitted copy.
-
 ## 16. Conclusion and future enhancements
 
 Planora demonstrates polyglot persistence without duplicating core records: PostgreSQL provides relational integrity and transaction-safe booking operations, while MongoDB stores optional descriptive catalog imports and flexible event documents. The current implementation combines role-aware accounts, event and resource management, vendor services, operational records, financial reporting, and database-level booking safeguards. It demonstrates practical use of relational constraints, transactions, triggers, indexes, a view, a reporting function, and indexed document collections.
